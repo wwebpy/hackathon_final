@@ -51,4 +51,4 @@ catboost_pool.bin
 .DS_Store
 
 
-data/
+*.csv
