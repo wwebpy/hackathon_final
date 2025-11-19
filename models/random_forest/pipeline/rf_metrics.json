@@ -1,17 +1,17 @@
 {
-    "timestamp": "2025-11-19 16:10:00",
+    "timestamp": "2025-11-19 17:11:22",
     "model_path": "../models/random_forest/pipeline/rf_pipeline.pkl",
     "best_params": {
-        "model__n_estimators": 120,
-        "model__min_samples_split": 5,
-        "model__min_samples_leaf": 2,
+        "model__n_estimators": 180,
+        "model__min_samples_split": 2,
+        "model__min_samples_leaf": 1,
         "model__max_features": 0.5,
-        "model__max_depth": 12
+        "model__max_depth": 8
     },
     "metrics": {
-        "MAE_train": 49.90854810021755,
-        "MAE_test": 52.06895290141735,
-        "CV_MAE_mean": 57.72546883415704,
-        "CV_MAE_std": 5.218972741534108
+        "MAE_train": 54.20407054044727,
+        "MAE_test": 54.39791128870048,
+        "CV_MAE_mean": 58.76504213359717,
+        "CV_MAE_std": 3.801820301637192
     }
 }
