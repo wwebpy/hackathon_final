@@ -13,6 +13,46 @@ from datetime import datetime
 import joblib
 
 # -----------------------------
+# Feature Engineering
+# -----------------------------
+def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    # Sicherstellen, dass relevante Spalten datetime sind
+    dt_cols = [
+        "Auftragseingang",
+        "Auftragsende_SOLL",
+        "AFO_Start_SOLL",
+        "AFO_Ende_SOLL",
+        "AFO_Start_IST",
+        "AFO_Ende_IST",
+    ]
+    for c in dt_cols:
+        if c in df.columns:
+            df[c] = pd.to_datetime(df[c], errors="coerce")
+
+    # Dauer SOLL: Auftrag in Tagen
+    if "Auftragseingang" in df.columns and "Auftragsende_SOLL" in df.columns:
+        delta = df["Auftragsende_SOLL"] - df["Auftragseingang"]
+        df["soll_dauer_auftrag_tag"] = delta.dt.total_seconds() / 86400
+
+        # Kalendereigenschaften
+        df["auftragseingang_dow"] = df["Auftragseingang"].dt.weekday
+        df["auftragseingang_monat"] = df["Auftragseingang"].dt.month
+
+    # Dauer SOLL: AFO in Stunden
+    if "AFO_Start_SOLL" in df.columns and "AFO_Ende_SOLL" in df.columns:
+        delta_afo_soll = df["AFO_Ende_SOLL"] - df["AFO_Start_SOLL"]
+        df["soll_dauer_afo_stunden"] = delta_afo_soll.dt.total_seconds() / 3600
+
+    # Dauer IST: AFO in Stunden
+    if "AFO_Start_IST" in df.columns and "AFO_Ende_IST" in df.columns:
+        delta_afo_ist = df["AFO_Ende_IST"] - df["AFO_Start_IST"]
+        df["ist_dauer_afo_stunden"] = delta_afo_ist.dt.total_seconds() / 3600
+
+    return df
+
+# -----------------------------
 # Daten laden
 # -----------------------------
 data = load_data()
@@ -31,25 +71,41 @@ data = data.dropna(subset=[TARGET]).copy()
 # Nur Datum (Zeit auf 00:00:00)
 data[TARGET] = data[TARGET].dt.normalize()
 
+# Feature Engineering anwenden
+data_fe = add_time_features(data)
+
 # -----------------------------
 # Features / Target
 # -----------------------------
-X_full = data.drop(columns=[TARGET])
-y_full = data[TARGET]
+X_full = data_fe.drop(columns=[TARGET])
+y_full = data_fe[TARGET]
+
+# AuftragsID NICHT als Feature verwenden
+if "AuftragsID" in X_full.columns:
+    X_full = X_full.drop(columns=["AuftragsID"])
+
+# MaschinenID eher als Kategorie behandeln
+if "MaschinenID" in X_full.columns:
+    X_full["MaschinenID"] = X_full["MaschinenID"].astype("Int64").astype("string")
 
 # bool-Spalte als numerisch casten (falls vorhanden)
 if "is_transport_ruesten" in X_full.columns:
     X_full["is_transport_ruesten"] = X_full["is_transport_ruesten"].astype(int)
 
-categorical = X_full.select_dtypes(include=["object"]).columns.tolist()
+# Spaltentypen bestimmen (Objekt + string = kategorial)
+categorical = X_full.select_dtypes(include=["object", "string"]).columns.tolist()
 numeric = X_full.select_dtypes(include=[np.number]).columns.tolist()
 
 print("Kategoriale Spalten:", categorical)
 print("Numerische Spalten:", numeric)
 
-# Train/Test Split – wie bei den linearen Modellen
+# DataFrame für split_data vorbereiten (X + Target)
+data_fe_for_split = X_full.copy()
+data_fe_for_split[TARGET] = y_full
+
+# Train/Test Split – gleiche Logik wie bei deinen anderen Modellen
 X_train, X_test, y_train_dt, y_test_dt = split_data(
-    data, test_size=0.2, random_state=42
+    data_fe_for_split, test_size=0.2, random_state=42
 )
 
 # Targets als Datetime
@@ -71,7 +127,7 @@ y_train = y_train_dt.astype("int64")
 y_test = y_test_dt.astype("int64")
 
 # -----------------------------
-# Preprocessing (gleich wie oben)
+# Preprocessing
 # -----------------------------
 cat_pipeline = Pipeline(steps=[
     ("imputer", SimpleImputer(strategy="most_frequent")),
@@ -90,7 +146,7 @@ preprocessor = ColumnTransformer(
 )
 
 # -----------------------------
-# Entscheidungsbäume
+# Entscheidungsbäume (etwas regularisiert)
 # -----------------------------
 criterions = ["squared_error", "absolute_error"]
 
@@ -102,10 +158,10 @@ NS_PER_DAY = 24 * 60 * 60 * 1e9  # Nanosekunden pro Tag
 for crit in criterions:
     tree = DecisionTreeRegressor(
         criterion=crit,
-        max_depth=6,
+        max_depth=10,          # etwas tiefer, aber nicht zu tief
+        min_samples_split=200, # verhindert Mini-Blätter
+        min_samples_leaf=100,
         random_state=42,
-        min_samples_split=10,
-        min_samples_leaf=5,
     )
 
     pipe = Pipeline(
@@ -156,5 +212,3 @@ for crit in criterions:
         json.dump(results, f, indent=4)
 
     print(f"📦 Modell & Metriken gespeichert unter: {metrics_path}")
-
-    
