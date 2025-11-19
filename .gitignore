@@ -8,7 +8,9 @@ venv/
 ENV/
 env/
 *.env
-
+.venv/
+__pycache__/
+*.pyc
 # Distribution / packaging
 build/
 dist/
